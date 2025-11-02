@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Sweet Shop Management System</title>
+
+  <!-- ✅ Tailwind for quick styling (you can remove later if you want pure CSS) -->
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
+    body {
+      font-family: 'Inter', sans-serif;
+      background-color: #f7f7f7;
+      margin: 0;
+      padding: 0;
+    }
+    .hidden {
+      display: none;
+    }
+  </style>
+</head>
+<body>
+  <header class="bg-white shadow p-4 flex justify-between items-center">
+    <h1 class="text-2xl font-bold text-indigo-600 cursor-pointer">🍬 Sweet Shop</h1>
+    <div id="user-info" class="text-gray-700"></div>
+  </header>
+
+  <main class="p-6 container mx-auto">
+    <h2 class="text-3xl font-extrabold text-center mb-6">The Sweet Shop Dashboard</h2>
+
+    <div class="mb-6 text-center">
+      <input
+        type="text"
+        id="searchInput"
+        placeholder="Search sweets..."
+        class="p-3 border-2 border-indigo-300 rounded-lg w-full max-w-md"
+      />
+    </div>
+
+    <div id="sweets-container" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+      <!-- sweets will load here -->
+    </div>
+  </main>
+
+  <script>
+    const API_BASE_URL = "http://localhost:3000/api";
+    const user = { username: "admin", role: "Admin" }; // mock user; replace with login later
+    const token = localStorage.getItem("token") || ""; // optional auth
+
+    document.getElementById("user-info").innerHTML = `
+      <span>${user.username} (${user.role})</span>
+      <button id="logoutBtn" class="ml-3 bg-red-500 text-white px-3 py-2 rounded-lg">Logout</button>
+    `;
+
+    document.getElementById("logoutBtn").addEventListener("click", () => {
+      localStorage.removeItem("token");
+      alert("Logged out!");
+      location.reload();
+    });
+
+    async function api(endpoint, options = {}) {
+      const headers = { "Content-Type": "application/json" };
+      if (token) headers["Authorization"] = "Bearer " + token;
+      const res = await fetch(API_BASE_URL + endpoint, { ...options, headers });
+      if (res.status === 204) return {};
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || "API error");
+      return data;
+    }
+
+    async function loadSweets(query = "") {
+      const container = document.getElementById("sweets-container");
+      container.innerHTML = `<p class='text-center text-indigo-600 col-span-full'>Loading sweets...</p>`;
+      try {
+        const endpoint = query ? `/sweets/search?q=${encodeURIComponent(query)}` : "/sweets";
+        const sweets = await api(endpoint);
+        if (!sweets.length) {
+          container.innerHTML = `<p class='text-gray-500 col-span-full text-center'>No sweets found.</p>`;
+          return;
+        }
+        container.innerHTML = "";
+        sweets.forEach((sweet) => {
+          const sweetDiv = document.createElement("div");
+          sweetDiv.className =
+            "p-4 bg-white rounded-xl shadow-lg border border-gray-100 flex flex-col justify-between";
+
+          sweetDiv.innerHTML = `
+            <div>
+              <h3 class="text-xl font-bold">${sweet.name}</h3>
+              <p class="text-green-600 text-lg font-bold">₹${sweet.price.toFixed(2)}</p>
+              <p class="text-gray-500 text-sm">Stock: ${sweet.quantity}</p>
+            </div>
+            <div class="mt-4 space-y-2">
+              <button
+                class="w-full p-2 rounded-lg text-white ${sweet.quantity > 0 ? "bg-indigo-600 hover:bg-indigo-700" : "bg-gray-400 cursor-not-allowed"}"
+                ${sweet.quantity <= 0 ? "disabled" : ""}
+                onclick="purchaseSweet('${sweet.id}')"
+              >
+                ${sweet.quantity > 0 ? "Purchase" : "Out of Stock"}
+              </button>
+              ${
+                user.role === "Admin"
+                  ? `
+              <div class="flex space-x-2">
+                <button onclick="restockSweet('${sweet.id}')" class="flex-1 p-2 rounded-lg bg-green-500 hover:bg-green-600 text-white">
+                  Restock
+                </button>
+                <button onclick="deleteSweet('${sweet.id}')" class="flex-1 p-2 rounded-lg bg-red-500 hover:bg-red-600 text-white">
+                  Delete
+                </button>
+              </div>
+              `
+                  : ""
+              }
+            </div>
+          `;
+          container.appendChild(sweetDiv);
+        });
+      } catch (err) {
+        console.error(err);
+        container.innerHTML = `<p class='text-red-500 col-span-full text-center'>Failed to load sweets.</p>`;
+      }
+    }
+
+    async function purchaseSweet(id) {
+      try {
+        const updated = await api(`/sweets/${id}/purchase`, { method: "POST" });
+        alert(`Purchased ${updated.name}!`);
+        loadSweets();
+      } catch (err) {
+        alert("Purchase failed: " + err.message);
+      }
+    }
+
+    async function restockSweet(id) {
+      try {
+        const updated = await api(`/sweets/${id}/restock`, {
+          method: "POST",
+          body: JSON.stringify({ quantity: 5 }),
+        });
+        alert(`Restocked ${updated.name}`);
+        loadSweets();
+      } catch (err) {
+        alert("Restock failed: " + err.message);
+      }
+    }
+
+    async function deleteSweet(id) {
+      if (!confirm("Delete this sweet?")) return;
+      try {
+        await api(`/sweets/${id}`, { method: "DELETE" });
+        alert("Sweet deleted!");
+        loadSweets();
+      } catch (err) {
+        alert("Delete failed: " + err.message);
+      }
+    }
+
+    // Search sweets
+    document.getElementById("searchInput").addEventListener("input", (e) => {
+      const query = e.target.value.trim();
+      loadSweets(query);
+    });
+
+    // Initial load
+    loadSweets();
+  </script>
+</body>
+</html>
